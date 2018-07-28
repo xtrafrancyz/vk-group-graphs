@@ -23,7 +23,7 @@ func NewCounter(storage *Storage) *Counter {
 	}
 }
 
-func (c *Counter) OnMessageSent(from, to int) {
+func (c *Counter) OnMessageReply(from, to int) {
 	c.lock.Lock()
 	c.users[from]++
 	c.lock.Unlock()

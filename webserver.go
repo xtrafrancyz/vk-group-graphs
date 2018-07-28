@@ -12,20 +12,20 @@ var json = jsoniter.ConfigFastest
 var methodPost = []byte("POST")
 
 type WebServer struct {
-	confirmationKey     string
-	secretKey           string
-	messageSentCallback MessageSentCallback
+	confirmationKey string
+	secretKey       string
+
+	// Reply in group messages from manager
+	onMessageReply MessageReplyCallback
+
+	// Comment on the wall
+	onWallReply MessageJsonCallback
 }
 
-type MessageSentCallback func(from, to int)
+type MessageReplyCallback func(from, to int)
+type MessageJsonCallback func(map[string]interface{})
 
-func NewWebServer(host, confirmationKey, secretKey string, messageSentCallback MessageSentCallback) *WebServer {
-	ws := &WebServer{
-		confirmationKey:     confirmationKey,
-		secretKey:           secretKey,
-		messageSentCallback: messageSentCallback,
-	}
-
+func (ws *WebServer) Listen(host string) {
 	server := &fasthttp.Server{
 		Handler:           ws.handleRequest,
 		ReduceMemoryUsage: true,
@@ -37,8 +37,6 @@ func NewWebServer(host, confirmationKey, secretKey string, messageSentCallback M
 	if err != nil {
 		log.Fatalf("error in fasthttp server: %s", err)
 	}
-
-	return ws
 }
 
 func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
@@ -58,7 +56,7 @@ func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
 	}
 
 	req := &ctx.Request
-	//log.Println(string(req.Body()))
+	log.Println(string(req.Body()))
 
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(req.Body(), &parsed); err == nil {
@@ -73,12 +71,14 @@ func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
 
 		if parsed["type"] == "confirmation" {
 			ctx.SetBodyString(ws.confirmationKey)
-		} else if parsed["type"] == "message_reply" {
+		} else if parsed["type"] == "message_reply" && ws.onMessageReply != nil {
 			message := parsed["object"].(map[string]interface{})
-			ws.messageSentCallback(
+			ws.onMessageReply(
 				int(message["from_id"].(float64)),
 				int(message["user_id"].(float64)),
 			)
+		} else if parsed["type"] == "wall_reply_new" && ws.onWallReply != nil {
+			ws.onWallReply(parsed["object"].(map[string]interface{}))
 		}
 	}
 	ctx.SetStatusCode(200)
