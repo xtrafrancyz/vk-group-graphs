@@ -24,7 +24,7 @@ func main() {
 	counter.ScheduleSave()
 
 	spamFilter := SpamFilter{
-		api: vkapi.Create(*vkAccessToken),
+		api: vkapi.CreateWithToken(*vkAccessToken, "5.80"),
 	}
 
 	webServer := &WebServer{
