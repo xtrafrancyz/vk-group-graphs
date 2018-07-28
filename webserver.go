@@ -56,7 +56,7 @@ func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
 	}
 
 	req := &ctx.Request
-	log.Println(string(req.Body()))
+	//log.Println(string(req.Body()))
 
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(req.Body(), &parsed); err == nil {
