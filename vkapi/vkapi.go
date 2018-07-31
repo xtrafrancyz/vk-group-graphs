@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/json-iterator/go"
 	"go.uber.org/ratelimit"
@@ -31,6 +32,7 @@ type Api struct {
 	accessToken string
 	version     string
 	rateLimiter ratelimit.Limiter
+	httpClient  *http.Client
 	ApiDomain   string
 }
 
@@ -45,7 +47,10 @@ func CreateWithToken(token, version string) *Api {
 		accessToken: token,
 		version:     version,
 		rateLimiter: ratelimit.New(3, ratelimit.WithoutSlack),
-		ApiDomain:   apiDomain,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		ApiDomain: apiDomain,
 	}
 }
 
@@ -72,7 +77,7 @@ func (api *Api) Request(method string, params map[string]string) ([]byte, error)
 	requestQuery.Set("v", api.version)
 	requestUrl.RawQuery = requestQuery.Encode()
 
-	response, err := http.Get(requestUrl.String())
+	response, err := api.httpClient.Get(requestUrl.String())
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +132,7 @@ func (api *Api) Upload(serverUrl, field string, file []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return uploadRequest(serverUrl, contentType, b)
+	return api.uploadRequest(serverUrl, contentType, b)
 }
 
 func (api *Api) UploadStream(serverUrl, field string, reader io.Reader) ([]byte, error) {
@@ -143,7 +148,7 @@ func (api *Api) UploadStream(serverUrl, field string, reader io.Reader) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	return uploadRequest(serverUrl, contentType, b)
+	return api.uploadRequest(serverUrl, contentType, b)
 }
 
 func (api *Api) UploadFile(serverUrl, field string, file *os.File) ([]byte, error) {
@@ -159,7 +164,25 @@ func (api *Api) UploadFile(serverUrl, field string, file *os.File) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	return uploadRequest(serverUrl, contentType, b)
+	return api.uploadRequest(serverUrl, contentType, b)
+}
+
+func (api *Api) uploadRequest(serverUrl, contentType string, requestBody *bytes.Buffer) ([]byte, error) {
+	request, err := http.NewRequest("POST", serverUrl, requestBody)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", contentType)
+	response, err := api.httpClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	content, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	return content, nil
 }
 
 func makeMultipartData(fieldCreator func(writer *multipart.Writer) (io.Writer, error), writer func(io.Writer) error) (*bytes.Buffer, string, error) {
@@ -175,22 +198,4 @@ func makeMultipartData(fieldCreator func(writer *multipart.Writer) (io.Writer, e
 	}
 	w.Close()
 	return &b, w.FormDataContentType(), nil
-}
-
-func uploadRequest(serverUrl, contentType string, requestBody *bytes.Buffer) ([]byte, error) {
-	request, err := http.NewRequest("POST", serverUrl, requestBody)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("Content-Type", contentType)
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	content, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-	return content, nil
 }
