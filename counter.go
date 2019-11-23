@@ -16,11 +16,17 @@ type Counter struct {
 }
 
 func NewCounter(storage *Storage) *Counter {
-	return &Counter{
+	c := Counter{
 		storage: storage,
 		lock:    &sync.Mutex{},
 		users:   make(map[int]int),
 	}
+	Ticker{
+		Name:      "messages",
+		Precision: time.Hour,
+		Callback:  c.save,
+	}.Start()
+	return &c
 }
 
 func (c *Counter) OnMessageReply(from, to int) {
@@ -29,7 +35,7 @@ func (c *Counter) OnMessageReply(from, to int) {
 	c.lock.Unlock()
 }
 
-func (c *Counter) Save() {
+func (c *Counter) save() {
 	log.Println("Save " + string(len(c.users)))
 
 	c.lock.Lock()
@@ -51,25 +57,4 @@ func (c *Counter) Save() {
 	c.users = make(map[int]int)
 
 	c.lock.Unlock()
-}
-
-func (c *Counter) ScheduleSave() {
-	now := time.Now()
-	startOfNextHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-	startOfNextHour = startOfNextHour.Add(time.Hour)
-	sleepDuration := startOfNextHour.Sub(now)
-
-	log.Printf("Save will be proceed in %d minutes", int(sleepDuration.Minutes()))
-
-	time.AfterFunc(sleepDuration, func() {
-		c.Save()
-		ticker := time.NewTicker(time.Hour)
-		go func() {
-			for range ticker.C {
-				c.Save()
-			}
-		}()
-	})
-
-	time.NewTimer(time.Second)
 }
