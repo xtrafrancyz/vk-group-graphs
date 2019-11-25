@@ -46,10 +46,14 @@ func (s *Storage) Run() {
 			case <-ticker.C:
 				if len(bp.Points()) > 0 {
 					log.Println("Write to InfluxDB")
-					err := s.client.Write(bp)
-					if err != nil {
-						log.Println("Could not save points: " + err.Error())
-					}
+
+					go func(points influx.BatchPoints) {
+						err := s.client.Write(points)
+						if err != nil {
+							log.Println("Could not save points: " + err.Error())
+						}
+					}(bp)
+
 					bp, _ = influx.NewBatchPoints(s.batchPointsConfig)
 				}
 			}
