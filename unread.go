@@ -22,7 +22,7 @@ func NewUnread(storage *Storage, api *vkapi.Api, vkGroupId string) *Unread {
 	}
 	Ticker{
 		Name:      "unread",
-		Precision: 15 * time.Minute,
+		Precision: 5 * time.Minute,
 		Callback:  u.gather,
 	}.Start()
 	return &u

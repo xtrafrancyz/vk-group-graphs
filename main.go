@@ -21,20 +21,15 @@ func main() {
 	storage := NewStorage(*influxUrl, *influxDatabase, *influxRetentionPolicy)
 	storage.Run()
 
-	api := vkapi.CreateWithToken(*vkAccessToken, "5.80")
+	api := vkapi.CreateWithToken(*vkAccessToken, "5.103")
 
 	counter := NewCounter(storage)
 	NewUnread(storage, api, *vkGroupId)
 
-	spamFilter := SpamFilter{
-		api: api,
-	}
-
 	webServer := &WebServer{
 		confirmationKey: *vkConfirmationKey,
 		secretKey:       *vkSecretKey,
-		onMessageReply:  counter.OnMessageReply,
-		onWallReply:     spamFilter.OnWallReply,
+		onMessageOut:    counter.OnMessageOut,
 	}
 	webServer.Listen(*webHost)
 }

@@ -16,14 +16,10 @@ type WebServer struct {
 	secretKey       string
 
 	// Reply in group messages from manager
-	onMessageReply MessageReplyCallback
-
-	// Comment on the wall
-	onWallReply MessageJsonCallback
+	onMessageOut MessageOutCallback
 }
 
-type MessageReplyCallback func(from, to int)
-type MessageJsonCallback func(map[string]interface{})
+type MessageOutCallback func(from, to int)
 
 func (ws *WebServer) Listen(host string) {
 	server := &fasthttp.Server{
@@ -42,7 +38,7 @@ func (ws *WebServer) Listen(host string) {
 func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
 	defer func() {
 		if r := recover(); r != nil {
-			ctx.Logger().Printf("panic when proxying the request: %s", r)
+			ctx.Logger().Printf("panic on webhook: %s", r)
 			ctx.Response.Reset()
 			ctx.SetStatusCode(500)
 			ctx.SetBodyString("500 Internal Server Error")
@@ -71,14 +67,12 @@ func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
 
 		if parsed["type"] == "confirmation" {
 			ctx.SetBodyString(ws.confirmationKey)
-		} else if parsed["type"] == "message_reply" && ws.onMessageReply != nil {
+		} else if parsed["type"] == "message_reply" && ws.onMessageOut != nil {
 			message := parsed["object"].(map[string]interface{})
-			ws.onMessageReply(
+			ws.onMessageOut(
 				int(message["from_id"].(float64)),
-				int(message["user_id"].(float64)),
+				int(message["peer_id"].(float64)),
 			)
-		} else if parsed["type"] == "wall_reply_new" && ws.onWallReply != nil {
-			ws.onWallReply(parsed["object"].(map[string]interface{}))
 		}
 	}
 	ctx.SetStatusCode(200)

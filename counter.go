@@ -29,7 +29,7 @@ func NewCounter(storage *Storage) *Counter {
 	return &c
 }
 
-func (c *Counter) OnMessageReply(from, to int) {
+func (c *Counter) OnMessageOut(from, to int) {
 	c.lock.Lock()
 	c.users[from]++
 	c.lock.Unlock()
