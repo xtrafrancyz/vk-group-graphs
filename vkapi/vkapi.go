@@ -2,20 +2,24 @@ package vkapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
 
-	"github.com/json-iterator/go"
 	"go.uber.org/ratelimit"
 )
 
-var json = jsoniter.ConfigFastest
+type errorResponse struct {
+	Error struct {
+		ErrorMessage string `json:"error_message"`
+		ErrorCode    int    `json:"error_code"`
+	} `json:"error"`
+}
 
 type ApiError struct {
 	Message string
@@ -36,7 +40,7 @@ type Api struct {
 	ApiDomain   string
 }
 
-// Create a new api client with given access_token
+// CreateWithToken create a new api client with given access_token
 // You can use custom api domain with env variable VK_API_DOMAIN
 func CreateWithToken(token, version string) *Api {
 	apiDomain := os.Getenv("VK_API_DOMAIN")
@@ -54,9 +58,9 @@ func CreateWithToken(token, version string) *Api {
 	}
 }
 
-// Executes GET request to API method with given query parameters. Argument param can be nil if there is no parameters.
+// Request executes GET request to API method with given query parameters. Argument param can be nil if there is no parameters.
 //
-// There is 2 types of errors:
+// There are 2 types of errors:
 // 1. Any IO error will occur.
 // 2. There is an error in response from VK API. You can cast it to ApiError and see what happens. Response from the API
 // will also be included in the return values.
@@ -82,27 +86,27 @@ func (api *Api) Request(method string, params map[string]string) ([]byte, error)
 		return nil, err
 	}
 	defer response.Body.Close()
-	content, err := ioutil.ReadAll(response.Body)
+	content, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	errorVal := json.Get(content, "error")
-	if errorVal.ValueType() == jsoniter.ObjectValue {
+	var possibleError errorResponse
+	if err = json.Unmarshal(content, &possibleError); possibleError.Error.ErrorCode != 0 {
 		return content, &ApiError{
-			Message: errorVal.Get("error_msg").ToString(),
+			Message: possibleError.Error.ErrorMessage,
 			Method:  method,
 			Params:  params,
-			Code:    errorVal.Get("error_code").ToInt(),
+			Code:    possibleError.Error.ErrorCode,
 		}
 	}
 
 	return content, nil
 }
 
-// Executes GET request to API method with given query parameters. Argument param can be nil if there is no parameters.
+// RequestJson executes GET request to API method with given query parameters. Argument param can be nil if there is no parameters.
 //
-// There is 2 types of errors:
+// There are 2 types of errors:
 // 1. Any IO error will occur.
 // 2. There is an error in response from VK API. You can cast it to ApiError and see what happens. Response from the API
 // will also be included in the return values.
@@ -117,6 +121,23 @@ func (api *Api) RequestJson(method string, params map[string]string) (map[string
 		return parsed, err
 	}
 	return nil, err
+}
+
+// RequestJsonStruct executes GET request to API method with given query parameters. Argument param can be nil if there is no parameters.
+//
+// There are 2 types of errors:
+// 1. Any IO error will occur.
+// 2. There is an error in response from VK API. You can cast it to ApiError and see what happens.
+func (api *Api) RequestJsonStruct(method string, params map[string]string, val any) error {
+	content, err := api.Request(method, params)
+	if content != nil {
+		err2 := json.Unmarshal(content, val)
+		if err2 != nil {
+			return err2
+		}
+		return err
+	}
+	return err
 }
 
 func (api *Api) Upload(serverUrl, field string, file []byte) ([]byte, error) {
@@ -178,7 +199,7 @@ func (api *Api) uploadRequest(serverUrl, contentType string, requestBody *bytes.
 		return nil, err
 	}
 	defer response.Body.Close()
-	content, err := ioutil.ReadAll(response.Body)
+	content, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -192,10 +213,10 @@ func makeMultipartData(fieldCreator func(writer *multipart.Writer) (io.Writer, e
 	if err != nil {
 		return nil, "", err
 	}
+	defer w.Close()
 	err = writer(fw)
 	if err != nil {
 		return nil, "", err
 	}
-	w.Close()
 	return &b, w.FormDataContentType(), nil
 }

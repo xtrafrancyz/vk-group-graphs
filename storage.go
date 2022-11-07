@@ -1,62 +1,24 @@
 package main
 
 import (
-	"log"
-	"os"
-	"time"
-
-	influx "github.com/influxdata/influxdb1-client/v2"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 type Storage struct {
-	PointsChannel     chan *influx.Point
-	batchPointsConfig influx.BatchPointsConfig
-	client            influx.Client
+	writer api.WriteAPI
+	client influxdb2.Client
 }
 
-func NewStorage(url, database, retentionPolicy string) *Storage {
-	storage := &Storage{
-		PointsChannel: make(chan *influx.Point),
-		batchPointsConfig: influx.BatchPointsConfig{
-			Precision:       "s",
-			Database:        database,
-			RetentionPolicy: retentionPolicy,
-		},
+func NewStorage(config ConfigInfluxdb) *Storage {
+	s := &Storage{
+		client: influxdb2.NewClient(config.Url, config.Token),
 	}
-	influxClient, err := influx.NewHTTPClient(influx.HTTPConfig{
-		Addr: url,
-	})
-	if err != nil {
-		log.Println("Error creating InfluxDB Client: ", err.Error())
-		os.Exit(0)
-	}
-
-	storage.client = influxClient
-	return storage
+	s.writer = s.client.WriteAPI(config.Org, config.Bucket)
+	return s
 }
 
-func (s *Storage) Run() {
-	bp, _ := influx.NewBatchPoints(s.batchPointsConfig)
-	ticker := time.NewTicker(2 * time.Second)
-	go func() {
-		for {
-			select {
-			case p := <-s.PointsChannel:
-				bp.AddPoint(p)
-			case <-ticker.C:
-				if len(bp.Points()) > 0 {
-					log.Println("Write to InfluxDB")
-
-					go func(points influx.BatchPoints) {
-						err := s.client.Write(points)
-						if err != nil {
-							log.Println("Could not save points: " + err.Error())
-						}
-					}(bp)
-
-					bp, _ = influx.NewBatchPoints(s.batchPointsConfig)
-				}
-			}
-		}
-	}()
+func (s *Storage) AddPoint(point *write.Point) {
+	s.writer.WritePoint(point)
 }

@@ -1,15 +1,11 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"log"
 
-	"github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 )
-
-var json = jsoniter.ConfigFastest
-var methodPost = []byte("POST")
 
 type WebServer struct {
 	confirmationKey string
@@ -28,11 +24,7 @@ func (ws *WebServer) Listen(host string) {
 	}
 
 	log.Printf("Starting server on http://%s", host)
-	err := server.ListenAndServe(host)
-
-	if err != nil {
-		log.Fatalf("error in fasthttp server: %s", err)
-	}
+	log.Fatalln(server.ListenAndServe(host))
 }
 
 func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
@@ -45,16 +37,15 @@ func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
 		}
 	}()
 
-	if !bytes.Equal(ctx.Method(), methodPost) {
+	if string(ctx.Method()) != "POST" {
 		ctx.SetStatusCode(403)
 		ctx.SetBodyString("Only POST allowed")
 		return
 	}
 
 	req := &ctx.Request
-	//log.Println(string(req.Body()))
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(req.Body(), &parsed); err == nil {
 		if ws.secretKey != "" && ws.secretKey != parsed["secret"] {
 			ctx.SetStatusCode(403)
@@ -68,7 +59,7 @@ func (ws *WebServer) handleRequest(ctx *fasthttp.RequestCtx) {
 		if parsed["type"] == "confirmation" {
 			ctx.SetBodyString(ws.confirmationKey)
 		} else if parsed["type"] == "message_reply" && ws.onMessageOut != nil {
-			message := parsed["object"].(map[string]interface{})
+			message := parsed["object"].(map[string]any)
 			ws.onMessageOut(
 				int(message["from_id"].(float64)),
 				int(message["peer_id"].(float64)),

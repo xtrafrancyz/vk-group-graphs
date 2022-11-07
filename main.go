@@ -2,34 +2,55 @@ package main
 
 import (
 	"flag"
+	"log"
+	"os"
 
 	"github.com/xtrafrancyz/vk-group-graphs/vkapi"
+	"gopkg.in/yaml.v3"
 )
 
-func main() {
-	var webHost = flag.String("webhost", "0.0.0.0:7424", "address to bind webserver")
-	var vkConfirmationKey = flag.String("vk-confirmation-key", "123qwe", "confirmation key from vk")
-	var vkSecretKey = flag.String("vk-secret-key", "123qwe", "secret key from vk")
-	var vkAccessToken = flag.String("vk-access-token", "123qwe", "access token from vk")
-	var vkGroupId = flag.String("vk-group-id", "123", "id of vk group to get unread messages")
-	var influxUrl = flag.String("influx-url", "http://127.0.0.1:8086", "address of InfluxDB")
-	var influxDatabase = flag.String("influx-database", "vk_graphs", "database name")
-	var influxRetentionPolicy = flag.String("influx-rp", "a_year", "retention policy")
+type Config struct {
+	Bind     string
+	Vk       ConfigVk
+	Influxdb ConfigInfluxdb
+}
 
+type ConfigVk struct {
+	Confirmation string
+	Secret       string
+	Token        string
+	GroupId      string
+}
+
+type ConfigInfluxdb struct {
+	Url    string
+	Org    string
+	Bucket string
+	Token  string
+}
+
+func main() {
+	configFile := flag.String("config", "config.yaml", "config file path")
 	flag.Parse()
 
-	storage := NewStorage(*influxUrl, *influxDatabase, *influxRetentionPolicy)
-	storage.Run()
+	var config Config
+	if b, err := os.ReadFile(*configFile); err != nil {
+		log.Fatalln("Unable to read config file", err)
+	} else if err = yaml.Unmarshal(b, &config); err != nil {
+		log.Fatalln("Unable to parse config", err)
+	}
 
-	api := vkapi.CreateWithToken(*vkAccessToken, "5.103")
+	storage := NewStorage(config.Influxdb)
+
+	api := vkapi.CreateWithToken(config.Vk.Token, "5.103")
 
 	counter := NewCounter(storage)
-	NewUnread(storage, api, *vkGroupId)
+	NewUnread(storage, api, config.Vk.GroupId)
 
 	webServer := &WebServer{
-		confirmationKey: *vkConfirmationKey,
-		secretKey:       *vkSecretKey,
+		confirmationKey: config.Vk.Confirmation,
+		secretKey:       config.Vk.Secret,
 		onMessageOut:    counter.OnMessageOut,
 	}
-	webServer.Listen(*webHost)
+	webServer.Listen(config.Bind)
 }

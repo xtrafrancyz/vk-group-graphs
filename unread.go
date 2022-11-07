@@ -4,9 +4,15 @@ import (
 	"log"
 	"time"
 
-	influx "github.com/influxdata/influxdb1-client/v2"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/xtrafrancyz/vk-group-graphs/vkapi"
 )
+
+type respConversations struct {
+	Response struct {
+		UnreadCount int `json:"unread_count"`
+	} `json:"response"`
+}
 
 type Unread struct {
 	storage *Storage
@@ -29,22 +35,21 @@ func NewUnread(storage *Storage, api *vkapi.Api, vkGroupId string) *Unread {
 }
 
 func (u *Unread) gather() {
-	response, err := u.api.Request("messages.getConversations", map[string]string{
+	var response respConversations
+	err := u.api.RequestJsonStruct("messages.getConversations", map[string]string{
 		"count":    "0",
 		"group_id": u.groupId,
-	})
+	}, &response)
 	if err != nil {
 		log.Println("Could not load unread messages", err)
 		return
 	}
-	unread := json.Get(response, "response", "unread_count").ToInt()
-	fields := map[string]interface{}{
-		"unread": unread,
-	}
-	point, err := influx.NewPoint("unread", nil, fields, time.Now())
-	if err != nil {
-		log.Println("Could not create point: ", err.Error())
-	} else {
-		u.storage.PointsChannel <- point
-	}
+	u.storage.AddPoint(influxdb2.NewPoint(
+		"unread",
+		nil,
+		map[string]any{
+			"unread": response.Response.UnreadCount,
+		},
+		time.Now(),
+	))
 }
